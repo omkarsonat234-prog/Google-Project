@@ -8,6 +8,20 @@ UPLOAD_DIR = STATIC_DIR / "uploads"
 SAMPLES_DIR = STATIC_DIR / "samples"
 DB_PATH = BASE_DIR / "medbridge.db"
 
+# Serverless environment compatibility (e.g., Vercel Lambda where repo root is read-only)
+if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+    STATIC_DIR = Path("/tmp/static")
+    UPLOAD_DIR = STATIC_DIR / "uploads"
+    SAMPLES_DIR = STATIC_DIR / "samples"
+    DB_PATH = Path("/tmp/medbridge.db")
+    bundled_db = BASE_DIR / "medbridge.db"
+    if bundled_db.exists() and not DB_PATH.exists():
+        try:
+            import shutil
+            shutil.copy2(bundled_db, DB_PATH)
+        except Exception:
+            pass
+
 # Ensure directories exist
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
