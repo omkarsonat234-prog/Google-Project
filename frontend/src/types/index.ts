@@ -99,6 +99,9 @@ export interface CaregiverAuthorization {
   caregiver_id: string;
   caregiver_name: string;
   relationship: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
   status: 'authorized' | 'revoked';
   created_at: string;
 }

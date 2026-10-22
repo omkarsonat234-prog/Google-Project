@@ -404,27 +404,128 @@ export async function fetchCaregiverAuthorizations(patientId = 'demo-patient'): 
   try {
     const res = await fetch(`${API_BASE}/caregiver/authorizations?patient_id=${patientId}`);
     if (!res.ok) throw new Error('Failed to fetch authorizations');
-    return await res.json();
+    const data = await res.json();
+    setStorageItem(`caregiver_auths_${patientId}`, data);
+    return data;
   } catch {
-    return [];
+    const cached = getStorageItem<CaregiverAuthorization[]>(`caregiver_auths_${patientId}`, []);
+    if (cached && cached.length > 0) return cached;
+    const defaultAuth: CaregiverAuthorization[] = [
+      {
+        id: 'cg-auth-demo',
+        patient_id: patientId,
+        caregiver_id: 'cg-100',
+        caregiver_name: 'Elena Vance',
+        relationship: 'Daughter & Primary Caregiver',
+        phone: '+1 (555) 234-5678',
+        email: 'elena.vance@familycare.org',
+        notes: 'Healthcare Proxy & Power of Attorney',
+        status: 'authorized',
+        created_at: new Date().toISOString(),
+      }
+    ];
+    setStorageItem(`caregiver_auths_${patientId}`, defaultAuth);
+    return defaultAuth;
   }
 }
 
-export async function grantCaregiverAuthorization(caregiver_name: string, relationship: string, patient_id = 'demo-patient'): Promise<CaregiverAuthorization> {
-  const res = await fetch(`${API_BASE}/caregiver/authorize`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ caregiver_name, relationship, patient_id }),
-  });
-  if (!res.ok) throw new Error('Failed to grant authorization');
-  return res.json();
+export async function grantCaregiverAuthorization(
+  caregiver_name: string,
+  relationship: string,
+  patient_id = 'demo-patient',
+  phone?: string,
+  email?: string,
+  notes?: string
+): Promise<CaregiverAuthorization> {
+  try {
+    const res = await fetch(`${API_BASE}/caregiver/authorize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caregiver_name, relationship, patient_id, phone, email, notes }),
+    });
+    if (!res.ok) throw new Error('Failed to grant authorization');
+    const data = await res.json();
+    const current = getStorageItem<CaregiverAuthorization[]>(`caregiver_auths_${patient_id}`, []);
+    setStorageItem(`caregiver_auths_${patient_id}`, [data, ...current]);
+    return data;
+  } catch {
+    const newAuth: CaregiverAuthorization = {
+      id: `cg-${Date.now()}`,
+      patient_id,
+      caregiver_id: `cg-${Math.random().toString(36).substring(2, 8)}`,
+      caregiver_name,
+      relationship,
+      phone: phone || '',
+      email: email || '',
+      notes: notes || '',
+      status: 'authorized',
+      created_at: new Date().toISOString(),
+    };
+    const current = getStorageItem<CaregiverAuthorization[]>(`caregiver_auths_${patient_id}`, []);
+    setStorageItem(`caregiver_auths_${patient_id}`, [newAuth, ...current]);
+    return newAuth;
+  }
+}
+
+export async function updateCaregiverAuthorization(
+  auth_id: string,
+  updates: Partial<CaregiverAuthorization>,
+  patient_id = 'demo-patient'
+): Promise<CaregiverAuthorization> {
+  try {
+    const res = await fetch(`${API_BASE}/caregiver/update/${auth_id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...updates, patient_id }),
+    });
+    if (!res.ok) throw new Error('Failed to update caregiver authorization');
+    const data = await res.json();
+    const current = getStorageItem<CaregiverAuthorization[]>(`caregiver_auths_${patient_id}`, []);
+    const updated = current.map((c) => (c.id === auth_id ? { ...c, ...data } : c));
+    setStorageItem(`caregiver_auths_${patient_id}`, updated);
+    return data;
+  } catch {
+    const current = getStorageItem<CaregiverAuthorization[]>(`caregiver_auths_${patient_id}`, []);
+    let updatedItem: CaregiverAuthorization | null = null;
+    const updated = current.map((c) => {
+      if (c.id === auth_id) {
+        updatedItem = { ...c, ...updates } as CaregiverAuthorization;
+        return updatedItem;
+      }
+      return c;
+    });
+    if (!updatedItem) {
+      updatedItem = {
+        id: auth_id,
+        patient_id,
+        caregiver_id: 'cg-100',
+        caregiver_name: updates.caregiver_name || 'Caregiver',
+        relationship: updates.relationship || 'Primary Caregiver',
+        phone: updates.phone || '',
+        email: updates.email || '',
+        notes: updates.notes || '',
+        status: updates.status || 'authorized',
+        created_at: new Date().toISOString(),
+      };
+      updated.push(updatedItem);
+    }
+    setStorageItem(`caregiver_auths_${patient_id}`, updated);
+    return updatedItem;
+  }
 }
 
 export async function revokeCaregiverAuthorization(auth_id: string, patient_id = 'demo-patient'): Promise<void> {
-  const res = await fetch(`${API_BASE}/caregiver/revoke/${auth_id}?patient_id=${patient_id}`, {
-    method: 'POST',
-  });
-  if (!res.ok) throw new Error('Failed to revoke authorization');
+  try {
+    const res = await fetch(`${API_BASE}/caregiver/revoke/${auth_id}?patient_id=${patient_id}`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error('Failed to revoke authorization');
+  } catch {
+    // Offline fallback
+  }
+  const current = getStorageItem<CaregiverAuthorization[]>(`caregiver_auths_${patient_id}`, []);
+  const updated = current.map((c) => (c.id === auth_id ? { ...c, status: 'revoked' as const } : c));
+  setStorageItem(`caregiver_auths_${patient_id}`, updated);
 }
 
 export async function fetchAuditLogs(limit = 100): Promise<AuditLogEntry[]> {
@@ -534,16 +635,25 @@ export async function loginUser(email: string, password: string): Promise<{ stat
     if (err.message && (err.message.includes('No account found') || err.message.includes('Incorrect password'))) {
       throw err;
     }
+    if (
+      cleanEmail === 'caregiver@medbridge.app' ||
+      cleanEmail === 'pharmacist@medbridge.app' ||
+      cleanEmail.includes('caregiver') ||
+      cleanEmail.includes('pharmacist')
+    ) {
+      throw new Error('Caregiver and Pharmacist logins are disabled. Only Patients and Physicians can sign in.');
+    }
     // Check local registered users fallback
     const localUsers = getStorageItem<any[]>('registered_users', []);
     const found = localUsers.find(u => u.email.toLowerCase() === cleanEmail);
+    if (found?.role === 'caregiver' || found?.role === 'pharmacist') {
+      throw new Error('Caregiver and Pharmacist logins are disabled. Only Patients and Physicians can sign in.');
+    }
     if (!found) {
       // Check built-in demo credentials
       const DEMOS: Record<string, any> = {
         'patient@medbridge.app': { id: 'demo-patient', full_name: 'Johnathan Doe', role: 'patient', password: 'demo1234' },
-        'caregiver@medbridge.app': { id: 'demo-caregiver', full_name: 'Elena Vance', role: 'caregiver', password: 'demo1234' },
         'physician@medbridge.app': { id: 'demo-physician', full_name: 'Dr. Sarah Jenkins', role: 'physician', password: 'demo1234' },
-        'pharmacist@medbridge.app': { id: 'demo-pharmacist', full_name: 'Dr. Michael Chen', role: 'pharmacist', password: 'demo1234' },
       };
       if (DEMOS[cleanEmail]) {
         if (DEMOS[cleanEmail].password !== password) {

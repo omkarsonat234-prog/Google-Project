@@ -152,25 +152,23 @@ export const SignUpPage: React.FC<Props> = ({
             <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-600 mb-2">
               Select Your Role in MedBridge (Locked to this account)
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 gap-3">
               {[
-                { id: 'patient', label: '🧑 Patient', desc: 'Personal Routines' },
-                { id: 'caregiver', label: '👩‍👧 Caregiver', desc: 'Family Consent' },
-                { id: 'physician', label: '🩺 Physician', desc: 'Attending MD' },
-                { id: 'pharmacist', label: '💊 Pharmacist', desc: 'Clinical PharmD' },
+                { id: 'patient', label: '🧑 Patient', desc: 'Personal Routines & Safe Schedule Management' },
+                { id: 'physician', label: '🩺 Physician / Doctor', desc: 'Attending MD & Clinical Reviews' },
               ].map((r) => (
                 <button
                   type="button"
                   key={r.id}
                   onClick={() => setRole(r.id as UserRole)}
-                  className={`p-3 rounded-2xl text-left border transition-all cursor-pointer ${
+                  className={`p-3.5 rounded-2xl text-left border transition-all cursor-pointer ${
                     role === r.id
                       ? 'bg-teal-50 border-teal-500 text-teal-900 shadow-xs'
                       : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
                   }`}
                 >
                   <p className="text-xs font-extrabold">{r.label}</p>
-                  <p className="text-[10px] text-slate-500 font-medium mt-0.5">{r.desc}</p>
+                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">{r.desc}</p>
                 </button>
               ))}
             </div>

@@ -11,7 +11,8 @@ import {
   UserCheck, 
   Lock,
   LogOut,
-  WifiOff
+  WifiOff,
+  HeartHandshake
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -53,6 +54,7 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab, onLogout }) =
         { id: 'upload',       label: 'Upload & Review',    icon: FileUp },
         { id: 'schedules',    label: 'Schedules',          icon: CalendarClock },
         { id: 'reminders',    label: 'Reminders',          icon: Bell },
+        { id: 'caregiver',    label: 'Caregiver',          icon: HeartHandshake },
         { id: 'followups',    label: 'Follow-ups',         icon: UserCheck },
         { id: 'diabetes',     label: 'Sugar Tracker',      icon: BarChart3 },
         { id: 'wound-care',   label: 'Wound Care',         icon: History },

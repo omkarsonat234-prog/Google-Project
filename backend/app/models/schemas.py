@@ -148,6 +148,18 @@ class CaregiverAuthRequest(BaseModel):
     caregiver_name: str
     relationship: str
     patient_id: str = "demo-patient"
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    notes: Optional[str] = None
+
+class CaregiverAuthUpdateRequest(BaseModel):
+    caregiver_name: Optional[str] = None
+    relationship: Optional[str] = None
+    patient_id: Optional[str] = "demo-patient"
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    notes: Optional[str] = None
+    status: Optional[str] = None
 
 class CaregiverAuthorization(BaseModel):
     id: str
@@ -155,6 +167,9 @@ class CaregiverAuthorization(BaseModel):
     caregiver_id: str
     caregiver_name: str
     relationship: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    notes: Optional[str] = None
     status: str
     created_at: str
 

@@ -30,16 +30,22 @@ import {
   Phone,
   Volume2,
   HelpCircle,
-  ChevronRight
+  ChevronRight,
+  Pencil,
+  Edit3,
+  Mail
 } from 'lucide-react';
 import { 
   fetchDashboardStats, 
   fetchReminders, 
   fetchSchedules, 
   acknowledgeReminder, 
-  reportIntake 
+  reportIntake,
+  fetchCaregiverAuthorizations,
+  grantCaregiverAuthorization,
+  updateCaregiverAuthorization
 } from '../services/api';
-import { DashboardStats, ReminderEvent, MedicationSchedule } from '../types';
+import { DashboardStats, ReminderEvent, MedicationSchedule, CaregiverAuthorization } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useReminderAudio } from '../context/ReminderAudioContext';
 
@@ -136,6 +142,17 @@ export const DashboardPage: React.FC<Props> = ({ onNavigate }) => {
   const [selectedExplainMed, setSelectedExplainMed] = useState<MedicineGuideItem | null>(null);
   const [medSearchQuery, setMedSearchQuery] = useState('');
 
+  // ── Dynamic Care Guardian State ──
+  const [activeCaregiver, setActiveCaregiver] = useState<CaregiverAuthorization | null>(null);
+  const [isEditingGuardian, setIsEditingGuardian] = useState(false);
+  const [guardianFormName, setGuardianFormName] = useState('Elena Vance');
+  const [guardianFormRelationship, setGuardianFormRelationship] = useState('Daughter & Primary Caregiver');
+  const [guardianFormPhone, setGuardianFormPhone] = useState('+1 (555) 234-5678');
+  const [guardianFormEmail, setGuardianFormEmail] = useState('elena.vance@familycare.org');
+  const [guardianFormNotes, setGuardianFormNotes] = useState('Healthcare Proxy & Power of Attorney');
+  const [isSavingGuardian, setIsSavingGuardian] = useState(false);
+  const [guardianSuccessMsg, setGuardianSuccessMsg] = useState('');
+
   // Automatic offline detection (No user toggle)
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -152,18 +169,71 @@ export const DashboardPage: React.FC<Props> = ({ onNavigate }) => {
     setIsLoading(true);
     try {
       const todayStr = new Date().toISOString().split('T')[0];
-      const [statsData, remindersData, schedulesData] = await Promise.all([
-        fetchDashboardStats(user.id),
-        fetchReminders(todayStr, user.id),
-        fetchSchedules(undefined, user.id)
+      const patientKey = user.id || 'demo-patient';
+      const [statsData, remindersData, schedulesData, caregiverData] = await Promise.all([
+        fetchDashboardStats(patientKey),
+        fetchReminders(todayStr, patientKey),
+        fetchSchedules(undefined, patientKey),
+        fetchCaregiverAuthorizations(patientKey)
       ]);
       setStats(statsData);
       setTodayReminders(remindersData);
       setSchedules(schedulesData);
+
+      const active = caregiverData.find((c) => c.status === 'authorized') || caregiverData[0] || null;
+      if (active) {
+        setActiveCaregiver(active);
+        setGuardianFormName(active.caregiver_name || 'Elena Vance');
+        setGuardianFormRelationship(active.relationship || 'Daughter & Primary Caregiver');
+        setGuardianFormPhone(active.phone || '+1 (555) 234-5678');
+        setGuardianFormEmail(active.email || 'elena.vance@familycare.org');
+        setGuardianFormNotes(active.notes || 'Healthcare Proxy & Power of Attorney');
+      }
     } catch (e) {
       console.warn('Dashboard operating with local offline cache', e);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSaveGuardian = async () => {
+    if (!guardianFormName.trim()) return;
+    setIsSavingGuardian(true);
+    try {
+      const patientKey = user.id || 'demo-patient';
+      let saved: CaregiverAuthorization;
+      if (activeCaregiver && activeCaregiver.id) {
+        saved = await updateCaregiverAuthorization(
+          activeCaregiver.id,
+          {
+            caregiver_name: guardianFormName.trim(),
+            relationship: guardianFormRelationship.trim(),
+            phone: guardianFormPhone.trim(),
+            email: guardianFormEmail.trim(),
+            notes: guardianFormNotes.trim(),
+          },
+          patientKey
+        );
+      } else {
+        saved = await grantCaregiverAuthorization(
+          guardianFormName.trim(),
+          guardianFormRelationship.trim(),
+          patientKey,
+          guardianFormPhone.trim(),
+          guardianFormEmail.trim(),
+          guardianFormNotes.trim()
+        );
+      }
+      setActiveCaregiver(saved);
+      setIsEditingGuardian(false);
+      setGuardianSuccessMsg('Care guardian updated successfully!');
+      setTimeout(() => setGuardianSuccessMsg(''), 4000);
+      await loadData();
+    } catch (e: any) {
+      console.error(e);
+      alert(e.message || 'Failed to update caregiver.');
+    } finally {
+      setIsSavingGuardian(false);
     }
   };
 
@@ -311,13 +381,16 @@ export const DashboardPage: React.FC<Props> = ({ onNavigate }) => {
     {
       id: 'guardian',
       title: 'Care Guardian',
-      subtitle: 'Person Responsible for Patient Care',
-      badge: 'Elena Vance',
+      subtitle: activeCaregiver?.relationship || 'Person Responsible for Patient Care',
+      badge: activeCaregiver?.caregiver_name || 'Designate Guardian',
       icon: HeartHandshake,
       color: 'text-rose-600',
       bgColor: 'bg-rose-50',
       borderHover: 'hover:border-rose-400',
-      action: () => setIsGuardianModalOpen(true),
+      action: () => {
+        setIsEditingGuardian(false);
+        setIsGuardianModalOpen(true);
+      },
     },
     {
       id: 'medinfo',
@@ -464,6 +537,12 @@ export const DashboardPage: React.FC<Props> = ({ onNavigate }) => {
 
       {/* ── DESIGNATED PERSON RESPONSIBLE FOR PATIENT CARE ── */}
       <section className="bg-gradient-to-r from-rose-50/80 via-white to-slate-50 rounded-3xl p-5 sm:p-6 border border-rose-200/70 shadow-2xs space-y-4">
+        {guardianSuccessMsg && (
+          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{guardianSuccessMsg}</span>
+          </div>
+        )}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 border border-rose-200 shadow-2xs">
@@ -474,26 +553,45 @@ export const DashboardPage: React.FC<Props> = ({ onNavigate }) => {
                 <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 bg-rose-100/70 px-2 py-0.5 rounded-full border border-rose-200">
                   Care Guardian
                 </span>
-                <span className="text-xs text-slate-400 font-semibold">• Healthcare Proxy</span>
+                <span className="text-xs text-slate-400 font-semibold">• Healthcare Proxy (Customizable)</span>
               </div>
               <h3 className="text-base font-extrabold text-slate-900 mt-0.5">
-                Elena Vance <span className="text-xs font-bold text-slate-500 font-normal">(Person Responsible for Patient Care)</span>
+                {activeCaregiver?.caregiver_name || 'Elena Vance'}{' '}
+                <span className="text-xs font-bold text-slate-500 font-normal">
+                  ({activeCaregiver?.relationship || 'Person Responsible for Patient Care'})
+                </span>
               </h3>
             </div>
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
-              onClick={() => alert('Calling Care Guardian: Elena Vance at +1 (555) 234-5678')}
+              onClick={() => {
+                const name = activeCaregiver?.caregiver_name || 'Elena Vance';
+                const phone = activeCaregiver?.phone || '+1 (555) 234-5678';
+                alert(`Calling Care Guardian: ${name} at ${phone}`);
+              }}
               className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all shadow-2xs cursor-pointer"
             >
-              <Phone className="w-3.5 h-3.5" /> Call Elena
+              <Phone className="w-3.5 h-3.5" /> Call {activeCaregiver ? activeCaregiver.caregiver_name.split(' ')[0] : 'Guardian'}
             </button>
             <button
-              onClick={() => setIsGuardianModalOpen(true)}
+              onClick={() => {
+                setIsEditingGuardian(true);
+                setIsGuardianModalOpen(true);
+              }}
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-800 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+            >
+              <Pencil className="w-3.5 h-3.5 text-rose-700" /> Update Guardian
+            </button>
+            <button
+              onClick={() => {
+                setIsEditingGuardian(false);
+                setIsGuardianModalOpen(true);
+              }}
               className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-slate-700 text-xs font-bold transition-all cursor-pointer"
             >
-              <Info className="w-3.5 h-3.5 text-slate-400" /> Guardian Details
+              <Info className="w-3.5 h-3.5 text-slate-400" /> Details
             </button>
           </div>
         </div>
@@ -501,16 +599,21 @@ export const DashboardPage: React.FC<Props> = ({ onNavigate }) => {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 border-t border-rose-100 text-xs text-slate-600">
           <div className="p-3 rounded-2xl bg-white/80 border border-slate-100">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Contact Phone</span>
-            <span className="font-extrabold text-slate-800 text-xs mt-0.5 block">+1 (555) 234-5678</span>
+            <span className="font-extrabold text-slate-800 text-xs mt-0.5 block">
+              {activeCaregiver?.phone || '+1 (555) 234-5678'}
+            </span>
           </div>
           <div className="p-3 rounded-2xl bg-white/80 border border-slate-100">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Care Relationship</span>
-            <span className="font-extrabold text-slate-800 text-xs mt-0.5 block">Daughter & Healthcare Proxy</span>
+            <span className="font-extrabold text-slate-800 text-xs mt-0.5 block truncate">
+              {activeCaregiver?.relationship || 'Daughter & Healthcare Proxy'}
+            </span>
           </div>
           <div className="p-3 rounded-2xl bg-white/80 border border-slate-100">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Supervision Status</span>
-            <span className="font-extrabold text-emerald-700 text-xs mt-0.5 flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Real-time Overdue Alerts Active
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Care Authority</span>
+            <span className="font-extrabold text-emerald-700 text-xs mt-0.5 flex items-center gap-1 truncate">
+              <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+              <span className="truncate">{activeCaregiver?.notes || 'Medication Supervision Active'}</span>
             </span>
           </div>
         </div>
@@ -1102,7 +1205,7 @@ export const DashboardPage: React.FC<Props> = ({ onNavigate }) => {
       {/* ── Guardian Details Modal (Person Responsible for Patient Care) ── */}
       {isGuardianModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-rose-500/20 text-rose-300 flex items-center justify-center border border-rose-500/30">
@@ -1110,11 +1213,16 @@ export const DashboardPage: React.FC<Props> = ({ onNavigate }) => {
                 </div>
                 <div>
                   <h3 className="text-base font-extrabold">Designated Care Guardian</h3>
-                  <p className="text-xs text-slate-300 font-medium">Elena Vance · Person Responsible for Patient Care</p>
+                  <p className="text-xs text-slate-300 font-medium">
+                    {activeCaregiver?.caregiver_name || 'Elena Vance'} · Person Responsible for Patient Care
+                  </p>
                 </div>
               </div>
               <button
-                onClick={() => setIsGuardianModalOpen(false)}
+                onClick={() => {
+                  setIsGuardianModalOpen(false);
+                  setIsEditingGuardian(false);
+                }}
                 className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -1122,48 +1230,200 @@ export const DashboardPage: React.FC<Props> = ({ onNavigate }) => {
             </div>
 
             <div className="p-6 space-y-4">
-              <div className="p-4 rounded-2xl bg-rose-50/70 border border-rose-200/80 space-y-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700">Official Guardian Record</span>
-                <p className="text-sm font-extrabold text-slate-900">Elena Vance</p>
-                <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                  Designated as the exclusive person responsible for overseeing patient medication intake, emergency escalations, and pharmacy refills.
-                </p>
+              {/* Toggle Banner / Feedback */}
+              <div className="flex items-center justify-between pb-1">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  {isEditingGuardian ? 'Editing Guardian Details' : 'Official Caregiver Record'}
+                </span>
+                <button
+                  onClick={() => setIsEditingGuardian(!isEditingGuardian)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors cursor-pointer"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  {isEditingGuardian ? 'View Record' : 'Edit Guardian Info'}
+                </button>
               </div>
 
-              <div className="space-y-2 text-xs">
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex justify-between items-center">
-                  <span className="font-bold text-slate-500">Direct Phone:</span>
-                  <span className="font-extrabold text-slate-900">+1 (555) 234-5678</span>
-                </div>
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex justify-between items-center">
-                  <span className="font-bold text-slate-500">Email Address:</span>
-                  <span className="font-extrabold text-slate-900">elena.vance@familycare.org</span>
-                </div>
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex justify-between items-center">
-                  <span className="font-bold text-slate-500">Legal Authority:</span>
-                  <span className="font-extrabold text-slate-900">Healthcare Proxy & Power of Attorney</span>
-                </div>
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex justify-between items-center">
-                  <span className="font-bold text-slate-500">Alert Priority:</span>
-                  <span className="font-extrabold text-emerald-700">Immediate SMS on 45m Overdue Dose</span>
-                </div>
-              </div>
+              {isEditingGuardian ? (
+                /* ── EDIT MODE ── */
+                <div className="space-y-3.5 bg-slate-50/70 p-4 rounded-2xl border border-slate-200">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Caregiver Full Name *</label>
+                    <input
+                      type="text"
+                      value={guardianFormName}
+                      onChange={(e) => setGuardianFormName(e.target.value)}
+                      placeholder="e.g. Maria Gonzalez"
+                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-xl focus:border-rose-500 focus:outline-hidden font-medium"
+                    />
+                  </div>
 
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 font-medium leading-relaxed">
-                <span className="font-bold text-slate-900">Patient Protection: </span>
-                Generic public sharing is strictly disabled. Only this designated person receives compliance updates to safeguard patient medical privacy.
-              </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Relationship to Patient *</label>
+                    <input
+                      type="text"
+                      value={guardianFormRelationship}
+                      onChange={(e) => setGuardianFormRelationship(e.target.value)}
+                      placeholder="e.g. Daughter & Primary Caregiver"
+                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-xl focus:border-rose-500 focus:outline-hidden font-medium"
+                    />
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {[
+                        'Daughter & Primary Caregiver',
+                        'Son & Family Proxy',
+                        'Spouse / Partner',
+                        'Parent',
+                        'Home Health Aide',
+                        'Legal Guardian'
+                      ].map((preset) => (
+                        <button
+                          type="button"
+                          key={preset}
+                          onClick={() => setGuardianFormRelationship(preset)}
+                          className="text-[10px] px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-rose-50 hover:text-rose-700 cursor-pointer"
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Contact Phone</label>
+                      <input
+                        type="tel"
+                        value={guardianFormPhone}
+                        onChange={(e) => setGuardianFormPhone(e.target.value)}
+                        placeholder="+1 (555) 234-5678"
+                        className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-xl focus:border-rose-500 focus:outline-hidden font-medium"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Email Address</label>
+                      <input
+                        type="email"
+                        value={guardianFormEmail}
+                        onChange={(e) => setGuardianFormEmail(e.target.value)}
+                        placeholder="caregiver@familycare.org"
+                        className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-xl focus:border-rose-500 focus:outline-hidden font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Legal Authority & Care Responsibilities</label>
+                    <textarea
+                      rows={2}
+                      value={guardianFormNotes}
+                      onChange={(e) => setGuardianFormNotes(e.target.value)}
+                      placeholder="e.g. Healthcare Proxy, power of attorney, medication compliance monitor"
+                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-xl focus:border-rose-500 focus:outline-hidden font-medium"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingGuardian(false)}
+                      className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveGuardian}
+                      disabled={isSavingGuardian || !guardianFormName.trim()}
+                      className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
+                    >
+                      {isSavingGuardian ? 'Saving…' : 'Save Caregiver Changes'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* ── VIEW MODE ── */
+                <>
+                  <div className="p-4 rounded-2xl bg-rose-50/70 border border-rose-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700">Official Guardian Record</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        Active Proxy
+                      </span>
+                    </div>
+                    <p className="text-base font-extrabold text-slate-900">
+                      {activeCaregiver?.caregiver_name || 'Elena Vance'}
+                    </p>
+                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                      Designated as the person responsible for overseeing patient medication intake, emergency escalations, and pharmacy refills.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex justify-between items-center">
+                      <span className="font-bold text-slate-500">Care Relationship:</span>
+                      <span className="font-extrabold text-slate-900">
+                        {activeCaregiver?.relationship || 'Daughter & Primary Caregiver'}
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex justify-between items-center">
+                      <span className="font-bold text-slate-500">Direct Phone:</span>
+                      <span className="font-extrabold text-slate-900">
+                        {activeCaregiver?.phone || '+1 (555) 234-5678'}
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex justify-between items-center">
+                      <span className="font-bold text-slate-500">Email Address:</span>
+                      <span className="font-extrabold text-slate-900">
+                        {activeCaregiver?.email || 'elena.vance@familycare.org'}
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex justify-between items-center">
+                      <span className="font-bold text-slate-500">Legal Authority:</span>
+                      <span className="font-extrabold text-slate-900">
+                        {activeCaregiver?.notes || 'Healthcare Proxy & Power of Attorney'}
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex justify-between items-center">
+                      <span className="font-bold text-slate-500">Alert Priority:</span>
+                      <span className="font-extrabold text-emerald-700">Immediate SMS on 45m Overdue Dose</span>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 font-medium leading-relaxed">
+                    <span className="font-bold text-slate-900">Patient Data Protection: </span>
+                    Generic public sharing is strictly disabled. Only this designated person receives compliance updates to safeguard patient medical privacy. You can update or replace them at any time.
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const name = activeCaregiver?.caregiver_name || 'Elena Vance';
+                    const phone = activeCaregiver?.phone || '+1 (555) 234-5678';
+                    alert(`Calling ${name} at ${phone}...`);
+                  }}
+                  className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <Phone className="w-3.5 h-3.5" /> Call {activeCaregiver ? activeCaregiver.caregiver_name.split(' ')[0] : 'Guardian'}
+                </button>
+                <button
+                  onClick={() => {
+                    setIsGuardianModalOpen(false);
+                    onNavigate('caregiver');
+                  }}
+                  className="px-3.5 py-2 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <Users className="w-3.5 h-3.5 text-slate-500" /> Manage All Caregivers
+                </button>
+              </div>
               <button
-                onClick={() => alert('Calling Elena Vance at +1 (555) 234-5678...')}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
-              >
-                <Phone className="w-3.5 h-3.5" /> Call Elena
-              </button>
-              <button
-                onClick={() => setIsGuardianModalOpen(false)}
+                onClick={() => {
+                  setIsGuardianModalOpen(false);
+                  setIsEditingGuardian(false);
+                }}
                 className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
               >
                 Close

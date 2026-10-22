@@ -17,8 +17,8 @@ import {
 import { loginUser } from '../services/api';
 
 type LoginType = 'user' | 'doctor';
-type UserSubRole = 'patient' | 'caregiver';
-type DoctorSubRole = 'physician' | 'pharmacist';
+type UserSubRole = 'patient';
+type DoctorSubRole = 'physician';
 
 interface Props {
   onLogin: (params: {
@@ -36,10 +36,8 @@ interface Props {
 }
 
 const DEMO_USERS = {
-  patient:    { email: 'patient@medbridge.app',    password: 'demo1234', name: 'Johnathan Doe' },
-  caregiver:  { email: 'caregiver@medbridge.app',  password: 'demo1234', name: 'Elena Vance' },
-  physician:  { email: 'physician@medbridge.app',  password: 'demo1234', name: 'Dr. Sarah Jenkins' },
-  pharmacist: { email: 'pharmacist@medbridge.app', password: 'demo1234', name: 'Dr. Michael Chen' },
+  patient:   { email: 'patient@medbridge.app',   password: 'demo1234', name: 'Johnathan Doe' },
+  physician: { email: 'physician@medbridge.app', password: 'demo1234', name: 'Dr. Sarah Jenkins' },
 };
 
 export const LoginPage: React.FC<Props> = ({ 
@@ -49,8 +47,6 @@ export const LoginPage: React.FC<Props> = ({
   onNavigateToForgotPassword 
 }) => {
   const [activeTab, setActiveTab]       = useState<LoginType>('user');
-  const [userSubRole, setUserSubRole]   = useState<UserSubRole>('patient');
-  const [doctorSubRole, setDoctorSubRole] = useState<DoctorSubRole>('physician');
   const [email, setEmail]               = useState('');
   const [password, setPassword]         = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -71,7 +67,7 @@ export const LoginPage: React.FC<Props> = ({
   const [customGoogleEmail, setCustomGoogleEmail] = useState('');
   const [showCustomGoogleInput, setShowCustomGoogleInput] = useState(false);
 
-  const currentSubRole    = activeTab === 'user' ? userSubRole : doctorSubRole;
+  const currentSubRole: UserSubRole | DoctorSubRole = activeTab === 'user' ? 'patient' : 'physician';
   const demoCredentials   = DEMO_USERS[currentSubRole];
 
   const handleTabChange = (tab: LoginType) => {
@@ -96,21 +92,24 @@ export const LoginPage: React.FC<Props> = ({
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    // Caregiver and Pharmacist logins are strictly disabled
+    if (
+      cleanEmail === 'caregiver@medbridge.app' || 
+      cleanEmail === 'pharmacist@medbridge.app' ||
+      cleanEmail.includes('caregiver') ||
+      cleanEmail.includes('pharmacist')
+    ) {
+      setError('Caregiver and Pharmacist logins are disabled. Only Patients and Doctors can sign in.');
+      return;
+    }
+
     // Validate role-specific demo accounts to ensure single role integrity
-    if (cleanEmail === 'patient@medbridge.app' && currentSubRole !== 'patient') {
-      setError('This account is registered strictly as a Patient. Please select the Patient role.');
+    if (cleanEmail === 'patient@medbridge.app' && activeTab !== 'user') {
+      setError('This account is registered strictly as a Patient. Please select the Patient tab.');
       return;
     }
-    if (cleanEmail === 'caregiver@medbridge.app' && currentSubRole !== 'caregiver') {
-      setError('This account is registered strictly as a Caregiver. Please select the Caregiver role.');
-      return;
-    }
-    if (cleanEmail === 'physician@medbridge.app' && currentSubRole !== 'physician') {
-      setError('This account is registered strictly as an Attending Physician. Please select the Doctor tab.');
-      return;
-    }
-    if (cleanEmail === 'pharmacist@medbridge.app' && currentSubRole !== 'pharmacist') {
-      setError('This account is registered strictly as a Pharmacist. Please select the Pharmacist role.');
+    if (cleanEmail === 'physician@medbridge.app' && activeTab !== 'doctor') {
+      setError('This account is registered strictly as a Doctor. Please select the Doctor tab.');
       return;
     }
 
@@ -120,7 +119,11 @@ export const LoginPage: React.FC<Props> = ({
         setLoading(false);
         const loggedUser = res.user;
         const assignedRole = loggedUser.role || currentSubRole;
-        const mappedLoginType = ['physician', 'pharmacist'].includes(assignedRole) ? 'doctor' : 'user';
+        if (assignedRole === 'caregiver' || assignedRole === 'pharmacist') {
+          setError('Caregiver and Pharmacist logins are disabled. Only Patients and Doctors can sign in.');
+          return;
+        }
+        const mappedLoginType = assignedRole === 'physician' ? 'doctor' : 'user';
         const displayName = loggedUser.full_name || loggedUser.name || cleanEmail.split('@')[0];
         onLogin({
           loginType: mappedLoginType,
@@ -138,6 +141,11 @@ export const LoginPage: React.FC<Props> = ({
   };
 
   const handleConfirmGoogleLogin = (accName: string, accEmail: string, avatarText: string = 'G', avatarBg: string = 'bg-indigo-600') => {
+    if (accEmail.toLowerCase().includes('caregiver') || accEmail.toLowerCase().includes('pharmacist')) {
+      setError('Caregiver and Pharmacist logins are disabled. Only Patients and Doctors can sign in.');
+      setIsGoogleModalOpen(false);
+      return;
+    }
     const acc = { name: accName, email: accEmail, avatarText, avatarBg };
     localStorage.setItem('medbridge_stored_google_account', JSON.stringify(acc));
     setStoredGoogleAccount(acc);
@@ -263,7 +271,7 @@ export const LoginPage: React.FC<Props> = ({
             <p className="text-sm text-slate-500 mt-1">Choose your account type and continue.</p>
           </div>
 
-          {/* User / Doctor tabs */}
+          {/* Patient / Doctor tabs */}
           <div className="flex rounded-xl bg-slate-200/60 p-1 mb-6 gap-1">
             {(['user', 'doctor'] as LoginType[]).map((tab) => (
               <button
@@ -277,42 +285,9 @@ export const LoginPage: React.FC<Props> = ({
                 }`}
               >
                 {tab === 'user' ? <User className="w-4 h-4" /> : <Stethoscope className="w-4 h-4" />}
-                {tab === 'user' ? 'Patient / Carer' : 'Doctor / Pharmacist'}
+                {tab === 'user' ? 'Patient' : 'Doctor'}
               </button>
             ))}
-          </div>
-
-          {/* Sub-role selector */}
-          <div className="mb-5">
-            <label className="block text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">
-              {activeTab === 'user' ? 'I am a…' : 'My role is…'}
-            </label>
-            <div className="flex gap-2">
-              {(activeTab === 'user'
-                ? [{ id: 'patient',   label: '🧑 Patient' },   { id: 'caregiver',  label: '👩‍👧 Caregiver' }]
-                : [{ id: 'physician', label: '🩺 Physician' }, { id: 'pharmacist', label: '💊 Pharmacist' }]
-              ).map(({ id, label }) => {
-                const isActive = currentSubRole === id;
-                return (
-                  <button
-                    key={id}
-                    id={`subrole-${id}`}
-                    onClick={() => activeTab === 'user' ? setUserSubRole(id as UserSubRole) : setDoctorSubRole(id as DoctorSubRole)}
-                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold border transition-all ${
-                      isActive
-                        ? accent.chipActive
-                        : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex items-center gap-1.5 mt-2 text-[11px] text-slate-500">
-              <Lock className="w-3 h-3 text-slate-400 shrink-0" />
-              <span>Single role enforced: each account is locked to one role per session.</span>
-            </div>
           </div>
 
           {/* Demo hint */}
@@ -412,7 +387,7 @@ export const LoginPage: React.FC<Props> = ({
                 </span>
               ) : (
                 <>
-                  Continue as {currentSubRole.charAt(0).toUpperCase() + currentSubRole.slice(1)}
+                  Continue as {activeTab === 'user' ? 'Patient' : 'Doctor'}
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -548,7 +523,7 @@ export const LoginPage: React.FC<Props> = ({
                   email: 'alex.morgan@gmail.com',
                   avatarText: 'AM',
                   avatarBg: 'bg-indigo-600',
-                  badge: 'Saved in Browser',
+                  badge: 'Patient Profile',
                 },
                 {
                   name: 'Dr. Aris Thorne, MD',
@@ -556,13 +531,6 @@ export const LoginPage: React.FC<Props> = ({
                   avatarText: 'AT',
                   avatarBg: 'bg-teal-700',
                   badge: 'Google Healthcare',
-                },
-                {
-                  name: 'Elena Vance',
-                  email: 'elena.vance.care@gmail.com',
-                  avatarText: 'EV',
-                  avatarBg: 'bg-rose-600',
-                  badge: 'Family Proxy',
                 },
               ].map((acc) => (
                 <button

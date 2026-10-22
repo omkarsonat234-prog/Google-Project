@@ -171,8 +171,8 @@ def seed_full_demo():
 
     # Caregiver Authorization
     cursor.execute("""
-    INSERT INTO caregiver_authorizations (id, patient_id, caregiver_id, caregiver_name, relationship, status, created_at)
-    VALUES ('cg-auth-demo', 'demo-patient', 'cg-100', 'Elena Vance', 'Daughter & Primary Caregiver', 'authorized', ?)
+    INSERT INTO caregiver_authorizations (id, patient_id, caregiver_id, caregiver_name, relationship, phone, email, notes, status, created_at)
+    VALUES ('cg-auth-demo', 'demo-patient', 'cg-100', 'Elena Vance', 'Daughter & Primary Caregiver', '+1 (555) 234-5678', 'elena.vance@familycare.org', 'Healthcare Proxy & Power of Attorney', 'authorized', ?)
     """, (now_iso,))
 
     conn.commit()

@@ -179,7 +179,9 @@ def test_caregiver_authorization_workflow():
     auth_res = client.post("/api/caregiver/authorize", json={
         "caregiver_name": "Elena Vance",
         "relationship": "Daughter",
-        "patient_id": "demo-patient"
+        "patient_id": "demo-patient",
+        "phone": "+1 (555) 234-5678",
+        "email": "elena@familycare.org"
     })
     assert auth_res.status_code == 200
     auth_id = auth_res.json()["id"]
@@ -188,9 +190,38 @@ def test_caregiver_authorization_workflow():
     assert list_res.status_code == 200
     assert len(list_res.json()) >= 1
 
+    # Update caregiver information
+    update_res = client.put(f"/api/caregiver/update/{auth_id}", json={
+        "caregiver_name": "Sarah Vance",
+        "relationship": "Sister & Primary Caregiver",
+        "phone": "+1 (555) 999-8877",
+        "email": "sarah.vance@familycare.org",
+        "notes": "Updated Primary Healthcare Proxy"
+    })
+    assert update_res.status_code == 200
+    u_data = update_res.json()
+    assert u_data["caregiver_name"] == "Sarah Vance"
+    assert u_data["relationship"] == "Sister & Primary Caregiver"
+    assert u_data["phone"] == "+1 (555) 999-8877"
+
     # Revoke
     revoke_res = client.post(f"/api/caregiver/revoke/{auth_id}?patient_id=demo-patient")
     assert revoke_res.status_code == 200
+
+def test_caregiver_and_pharmacist_login_disabled():
+    res = client.post("/api/auth/login", json={
+        "email": "caregiver@medbridge.app",
+        "password": "demo1234"
+    })
+    assert res.status_code == 403
+    assert "disabled" in res.json()["detail"].lower()
+
+    res_pharm = client.post("/api/auth/login", json={
+        "email": "pharmacist@medbridge.app",
+        "password": "demo1234"
+    })
+    assert res_pharm.status_code == 403
+    assert "disabled" in res_pharm.json()["detail"].lower()
 
 def test_audit_log_records_events():
     # Seed full demo

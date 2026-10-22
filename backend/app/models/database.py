@@ -121,6 +121,9 @@ def init_db():
         caregiver_id TEXT NOT NULL,
         caregiver_name TEXT NOT NULL,
         relationship TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        notes TEXT,
         status TEXT NOT NULL,
         created_at TEXT NOT NULL
     );
@@ -300,6 +303,17 @@ def init_db():
     ]:
         try:
             cursor.execute(f"ALTER TABLE users ADD COLUMN {col_def};")
+        except Exception:
+            pass
+
+    # Safe migrations for caregiver_authorizations table
+    for col_def in [
+        "phone TEXT",
+        "email TEXT",
+        "notes TEXT"
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE caregiver_authorizations ADD COLUMN {col_def};")
         except Exception:
             pass
 

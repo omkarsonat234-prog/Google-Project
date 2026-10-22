@@ -79,6 +79,12 @@ def login(req: LoginRequest):
             detail="No account found with this email. Please sign up first."
         )
     
+    if user.get('role') in ['caregiver', 'pharmacist']:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Caregiver and Pharmacist logins are disabled. Only Patients and Physicians can sign in."
+        )
+
     if not verify_password(user['password_hash'], req.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

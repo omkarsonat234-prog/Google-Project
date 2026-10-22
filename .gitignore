@@ -27,6 +27,8 @@ backend/app/static/uploads/*
 !frontend/package.json
 !frontend/tsconfig.json
 !frontend/tsconfig.node.json
+!vercel.json
+!frontend/vercel.json
 gcp-key.json
 service-account*.json
 

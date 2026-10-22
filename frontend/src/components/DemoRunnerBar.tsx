@@ -17,7 +17,7 @@ const DEMO_STEPS = [
   { step: 5, tab: 'upload', label: '5. Verification Gate', tip: 'Notice activation is blocked until checklist is confirmed or clinician overrides.' },
   { step: 6, tab: 'schedules', label: '6. Active Daily Schedule', tip: 'Inspect the non-destructive versioned schedule timeline.' },
   { step: 7, tab: 'reminders', label: '7. Reminders (Ack vs Taken)', tip: 'Acknowledge alert without claiming pill was swallowed; mark taken separately.' },
-  { step: 8, tab: 'dashboard', label: '8. Care Guardian', tip: 'Designated person responsible for patient care (Elena Vance).' },
+  { step: 8, tab: 'dashboard', label: '8. Care Guardian', tip: 'Designated person responsible for patient care (Customizable & Updatable).' },
   { step: 9, tab: 'dashboard', label: '9. Clinical Audit & Security', tip: 'Tamper-evident forensic audit logs preserved securely in the backend.' },
 ];
 
